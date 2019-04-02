@@ -1,0 +1,37 @@
+<?xml version="1.0"?>
+<project name="wsstreamlib" default="debug" basedir=".">
+	<description>
+		WebSocket Stream Handler Library
+	</description>
+
+	<property name="src" location="src" />
+	<property name="output" location="classes" />
+	<property name="lib" location="lib" />
+
+	<target name="compile" 
+		description="Compiles the WSStreamLib">
+		<javac srcdir="${src}" destdir="${output}" includeantruntime="true" />
+	</target>
+
+	<target name="debug" depends="compile"
+		description="Debug the WSStreamLib">
+		<echo message="java class path: ${java.class.path}" />
+		<echo message="java home: ${java.home}" />
+		<java classname="com.github.knockshore.wsstreamlib.Main" jvm="/opt/jdk1.6.0_45/jre/bin/java">
+			<classpath>
+				<pathelement path="${java.home}/lib/rt.jar" />
+				<pathelement path="${output}" />
+				<pathelement path="${java.class.path}" />
+			</classpath>
+		</java>
+	</target>
+	
+	<target name="dbg" depends="compile"
+		description="Debug using the shell">
+		<exec executable="java">
+			<arg value="-cp" />
+			<arg value="classes" />
+			<arg value="com.github.knockshore.wsstreamlib.Main" />
+		</exec>
+	</target>
+</project>
