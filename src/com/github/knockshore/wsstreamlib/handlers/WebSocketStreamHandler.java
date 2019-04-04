@@ -42,6 +42,12 @@ public class WebSocketStreamHandler {
 	}
 
 	private void output(Object ...args) {
+
+		for (Object arg : args) {
+			System.out.print(arg);
+			System.out.print(", ");
+		}
+		System.out.println();	
 	}
 
 	public static class WebSocketFrame {
@@ -74,11 +80,22 @@ public class WebSocketStreamHandler {
 
 	}
 
+	protected WebSocketListener websocketListener = new WebSocketListener() {
 
-	protected WebSocketListener websocketListener = new WebSocketListener(){
-		
 		public void onOpen(WebSocketStreamHandler wsStreamHandler) { output("got open"); }
-		public void onTextMessage(WebSocketStreamHandler wsStreamHandler, String message) { output("got message", message); }
+		public void onTextMessage(WebSocketStreamHandler wsStreamHandler, String message) { 
+			output("got message", message);
+			try {
+
+				wsStreamHandler.sendTextMessage(message);
+				wsStreamHandler.sendTextMessage("eom");
+				wsStreamHandler.close();
+
+			} catch (IOException e) {
+
+				e.printStackTrace();
+			}
+		}
 		public void onClose(WebSocketStreamHandler wsStreamHandler) { output("got close"); }
 		public void onPing(WebSocketStreamHandler wsStreamHandler) { output("got ping"); }
 
@@ -103,7 +120,7 @@ public class WebSocketStreamHandler {
 		return os;
 	}
 
-	public void sendTextMessage(String text) {
+	public void sendTextMessage(String text) throws IOException {
 		
 		if (text == null) return;
 		if (text.length() == 0) return;
@@ -121,19 +138,30 @@ public class WebSocketStreamHandler {
 		// no need to set text payload
 
 		// convert to bytes
+		byte[] frame = getFrameBytes(wsf);
 		// send em
+		this.os.write(frame, 0, frame[1] < 126 ? 2 : (frame[1] == 126 ? 4 : 10));
+		this.os.write(wsf.payload, 0, (int)wsf.payloadLen);
 	}
 
-	public void close() {
+	public void close() throws IOException {
 		
 		// prepare frame
 		// convert to bytes
-		// send em
+		// send emi
+		this.os.write(getCloseFrame());
+	}
+
+	private byte[] getCloseFrame() {
+
+		return new byte[] { (byte)0x88 };
 	}
 
 	private byte[] getFrameBytes(WebSocketFrame wsf) {
 		
-		byte[] buf = new byte[(int)wsf.payloadLen + 96];
+		// no masking key here
+		byte[] buf = new byte[10];
+		int strLen = (int)wsf.payloadLen;
 		int finalLen = 0;
 
 		debug("sending frame:", wsf);
@@ -144,7 +172,34 @@ public class WebSocketStreamHandler {
 		buf[0] |= (byte)(!wsf.reserved3 ? 0x00 : 0x10);
 		buf[0] |= wsf.opcode;
 
-		debug("first: ", String.format("%x", buf));
+		debug("first: ", String.format("%x", buf[0]));
+
+		buf[1] = 0x00; // no mask 
+
+		if (strLen > 65535) {
+
+			buf[1] = 127;
+			buf[2] = (byte)((0xFF00000000000000L & strLen) >>> 56);
+			buf[3] = (byte)((0x00FF000000000000L & strLen) >>> 48);
+			buf[4] = (byte)((0x0000FF0000000000L & strLen) >>> 40);
+			buf[5] = (byte)((0x000000FF00000000L & strLen) >>> 32);
+			buf[6] = (byte)((0x00000000FF000000L & strLen) >>> 24);
+			buf[7] = (byte)((0x0000000000FF0000L & strLen) >>> 16);
+			buf[8] = (byte)((0x000000000000FF00L & strLen) >>> 8);
+			buf[9] = (byte)(0x00000000000000FFL & strLen);
+
+		} else if (strLen < 126) {
+			
+			buf[1] = (byte)strLen;
+
+		} else {
+
+			buf[1] = 126;
+			buf[2] = (byte)((0xFF00 & strLen) >>> 8);
+			buf[3] = (byte)(0xFF & strLen);
+
+		}
+
 
 		/*try {
 			
@@ -154,7 +209,7 @@ public class WebSocketStreamHandler {
 			e.printStackTrace();
 		}*/
 
-		return null;
+		return buf;
 	}
 
 	public void ping() throws Exception{
@@ -203,8 +258,9 @@ public class WebSocketStreamHandler {
 				
 				maskingKeyOffset = 8;
 				wsf.payloadLen =
-					(buf[2] << 24) | (buf[3] << 16)	+ (buf[4] << 8)
-					+ buf[5];
+					(buf[2] << 56) | (buf[3] << 48)	+ (buf[4] << 40)
+					+ (buf[5] << 32) + (buf[6] << 24) + (buf[7] << 16)
+					+ (buf[8] << 8) + buf[9];
 
 			}
 			
@@ -258,14 +314,14 @@ public class WebSocketStreamHandler {
 					wsf.textPayload += new String(remainingBytes);
 
 				}
-				this.websocketListener.onTextMessage(wsf.textPayload);
+				this.websocketListener.onTextMessage(this, wsf.textPayload);
 
 			} else if (wsf.opcode == WSF_OPCODE_CLOSE) {
 
-				this.websocketListener.onClose();
+				this.websocketListener.onClose(this);
 			} else if (wsf.opcode == WSF_OPCODE_PING) {
 
-				this.websocketListener.onPing();
+				this.websocketListener.onPing(this);
 			}
 					
 
@@ -282,7 +338,7 @@ public class WebSocketStreamHandler {
 				
 			byte a = buf[dataOffset + i];
 		      	byte b = wsf.maskingKey[i % 4];
-			buf[dataOffset + i] = (a | b) & (!a | !b);
+			buf[dataOffset + i] = (byte)((a | b) & (~a | ~b));
 			// because too simple to xor
 		}
 

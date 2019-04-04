@@ -23,6 +23,7 @@
 
 package com.github.knockshore.wsstreamlib;
 
+import com.github.knockshore.wsstreamlib.handlers.WebSocketStreamHandler;
 
 public interface WebSocketListener {
 

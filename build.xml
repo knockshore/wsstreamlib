@@ -10,6 +10,7 @@
 
 	<target name="compile" 
 		description="Compiles the WSStreamLib">
+		<mkdir dir="${output}" />
 		<javac srcdir="${src}" destdir="${output}" includeantruntime="true" />
 	</target>
 
@@ -33,5 +34,9 @@
 			<arg value="classes" />
 			<arg value="com.github.knockshore.wsstreamlib.Main" />
 		</exec>
+	</target>
+
+	<target name="clean">
+		<delete dir="${output}" />
 	</target>
 </project>
